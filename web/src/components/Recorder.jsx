@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Microphone, Pause, Play, Stop, UploadSimple, ArrowCounterClockwise, Trash } from '@phosphor-icons/react';
+import { Microphone, Pause, Play, Stop, UploadSimple, ArrowCounterClockwise, Trash, Sparkle } from '@phosphor-icons/react';
 import { useRecorder } from '../lib/useRecorder.js';
 import { recoverChunks, getRecordingMeta, clearChunks, saveMeeting, saveAudio, newId } from '../lib/db.js';
 import { uploadAudio, waitForTranscript } from '../lib/api.js';
 import { fmtTime } from '../lib/exporters.js';
+import { Mascot } from './Brand.jsx';
 
 export const LANGUAGES = [
   ['es', 'Español'],
@@ -17,6 +18,21 @@ export const LANGUAGES = [
 
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const STAGES = { queued: 'En cola…', processing: 'Transcribiendo…' };
+const BARS = 48;
+
+function Wave({ level, live }) {
+  const [hist, setHist] = useState(() => Array(BARS).fill(0));
+  useEffect(() => {
+    if (!live) return;
+    setHist((h) => [...h.slice(1), level]);
+  }, [level, live]);
+  useEffect(() => { if (!live) setHist(Array(BARS).fill(0)); }, [live]);
+  return (
+    <div className="wave" aria-hidden="true">
+      {hist.map((v, i) => <i key={i} className={v > 0.08 ? 'hot' : ''} style={{ height: `${4 + v * 50}px` }} />)}
+    </div>
+  );
+}
 
 export default function Recorder({ onDone }) {
   const rec = useRecorder();
@@ -32,7 +48,6 @@ export default function Recorder({ onDone }) {
 
   useEffect(() => localStorage.setItem('juntas:lang', language), [language]);
 
-  // Recuperación de una grabación interrumpida.
   useEffect(() => {
     (async () => {
       const parts = await recoverChunks();
@@ -48,10 +63,7 @@ export default function Recorder({ onDone }) {
     setTitle(`Junta recuperada ${new Date(recovered.startedAt || Date.now()).toLocaleDateString('es-MX')}`);
     setRecovered(null);
   };
-  const discardRecovered = async () => {
-    await clearChunks();
-    setRecovered(null);
-  };
+  const discardRecovered = async () => { await clearChunks(); setRecovered(null); };
 
   const handleStop = async () => {
     const b = await rec.stop();
@@ -67,12 +79,7 @@ export default function Recorder({ onDone }) {
     e.target.value = '';
   };
 
-  const discard = async () => {
-    await clearChunks();
-    setBlob(null);
-    rec.reset();
-    setError(null);
-  };
+  const discard = async () => { await clearChunks(); setBlob(null); rec.reset(); setError(null); };
 
   const transcribe = async () => {
     if (!blob) return;
@@ -101,14 +108,7 @@ export default function Recorder({ onDone }) {
       const result = sub.result || (await waitForTranscript(sub.id, { onTick: (s) => setStage(STAGES[s] || 'Procesando…') }));
       const speakers = {};
       result.speakers.forEach((s) => { speakers[s] = ''; });
-      const done = {
-        ...meeting,
-        status: 'done',
-        utterances: result.utterances,
-        speakers,
-        durationSec: result.durationSec || meeting.durationSec,
-        detectedLanguage: result.language,
-      };
+      const done = { ...meeting, status: 'done', utterances: result.utterances, speakers, durationSec: result.durationSec || meeting.durationSec, detectedLanguage: result.language };
       await saveMeeting(done);
       onDone(done);
     } catch (e) {
@@ -118,16 +118,20 @@ export default function Recorder({ onDone }) {
     }
   };
 
+  const live = rec.state === 'recording';
+  const idle = rec.state === 'idle' && !blob;
+
   if (phase === 'uploading' || phase === 'processing') {
     return (
-      <div className="recorder">
-        <div className="progress">
+      <div className="card progress">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Mascot size={64} />
           <strong>{phase === 'uploading' ? `Subiendo audio… ${Math.round(progress * 100)}%` : stage || 'Transcribiendo…'}</strong>
-          <div className={`bar ${phase === 'processing' ? 'indeterminate' : ''}`}><i style={{ width: `${progress * 100}%` }} /></div>
-          <span className="hint">
-            {phase === 'processing' ? 'Suele tardar entre 15 y 30% de la duración del audio. Puedes dejar esta pestaña abierta.' : 'No cierres la pestaña.'}
-          </span>
         </div>
+        <div className={`bar ${phase === 'processing' ? 'indeterminate' : ''}`}><i style={{ width: `${progress * 100}%` }} /></div>
+        <p className="hint" style={{ textAlign: 'left' }}>
+          {phase === 'processing' ? 'Orejotas está escuchando. Suele tardar entre 15 y 30% de la duración del audio; puedes dejar la pestaña abierta.' : 'No cierres la pestaña mientras sube.'}
+        </p>
       </div>
     );
   }
@@ -145,7 +149,7 @@ export default function Recorder({ onDone }) {
       <div className="options">
         <div className="field">
           <label htmlFor="title">Título</label>
-          <input id="title" className="input" placeholder="Ej. Seguimiento semanal" value={title} onChange={(e) => setTitle(e.target.value)} disabled={rec.state !== 'idle' && rec.state !== 'stopped'} />
+          <input id="title" className="input" placeholder="Ej. Seguimiento semanal" value={title} onChange={(e) => setTitle(e.target.value)} disabled={live || rec.state === 'paused'} />
         </div>
         <div className="field">
           <label htmlFor="lang">Idioma de la junta</label>
@@ -155,48 +159,64 @@ export default function Recorder({ onDone }) {
         </div>
       </div>
 
-      <div className={`clock ${rec.state === 'recording' ? 'live' : ''}`}>{fmtTime(rec.elapsed)}</div>
-      <div className="meter"><i style={{ width: `${rec.level * 100}%` }} /></div>
+      <div className={`stage ${live ? 'live' : ''}`}>
+        <Mascot size={120} className="mascot-top" />
+        <div className="ring-wrap">
+          <span className="ring" /><span className="ring r2" /><span className="ring r3" />
+          {idle ? (
+            <button className="big-btn" onClick={rec.start} disabled={!rec.supported} aria-label="Grabar">
+              <Microphone size={44} weight="fill" />
+              <span className="lbl">Tap para grabar</span>
+            </button>
+          ) : (
+            <div className="big-btn" role="timer" aria-live="off" style={{ cursor: 'default' }}>
+              <span className="clock">{fmtTime(rec.elapsed)}</span>
+              <span className="lbl">{live ? 'Grabando' : rec.state === 'paused' ? 'En pausa' : 'Listo'}</span>
+            </div>
+          )}
+        </div>
+        <Wave level={rec.level} live={live} />
+      </div>
 
       {rec.error && <div className="hint error">{rec.error}</div>}
       {error && <div className="hint error">{error}</div>}
 
       <div className="controls">
-        {rec.state === 'idle' && !blob && (
+        {live && (
           <>
-            <button className="btn rec" onClick={rec.start} disabled={!rec.supported}><Microphone weight="fill" /> Grabar</button>
-            <button className="btn" onClick={() => fileRef.current?.click()}><UploadSimple /> Subir archivo</button>
-            <input ref={fileRef} type="file" accept="audio/*,video/mp4,video/webm,.m4a,.mp3,.wav,.ogg,.webm,.aac" hidden onChange={handleFile} />
-          </>
-        )}
-        {rec.state === 'recording' && (
-          <>
-            <button className="btn" onClick={rec.pause}><Pause /> Pausar</button>
-            <button className="btn primary" onClick={handleStop}><Stop weight="fill" /> Terminar</button>
+            <div className="ctl"><button className="round" onClick={rec.pause} aria-label="Pausar"><Pause size={24} weight="fill" /></button>Pausar</div>
+            <div className="ctl"><button className="round pink" onClick={handleStop} aria-label="Terminar"><Stop size={30} weight="fill" /></button>Terminar</div>
           </>
         )}
         {rec.state === 'paused' && (
           <>
-            <button className="btn" onClick={rec.resume}><Play weight="fill" /> Continuar</button>
-            <button className="btn primary" onClick={handleStop}><Stop weight="fill" /> Terminar</button>
+            <div className="ctl"><button className="round" onClick={rec.resume} aria-label="Continuar"><Play size={24} weight="fill" /></button>Continuar</div>
+            <div className="ctl"><button className="round pink" onClick={handleStop} aria-label="Terminar"><Stop size={30} weight="fill" /></button>Terminar</div>
           </>
         )}
-        {blob && (rec.state === 'stopped' || rec.state === 'idle') && (
+        {blob && !live && rec.state !== 'paused' && (
           <>
-            <button className="btn primary" onClick={transcribe}>Transcribir ({(blob.size / 1048576).toFixed(1)} MB)</button>
+            <button className="btn pink" onClick={transcribe}><Sparkle weight="fill" /> Transcribir ({(blob.size / 1048576).toFixed(1)} MB)</button>
             <button className="btn ghost danger" onClick={discard}><Trash /> Descartar</button>
           </>
         )}
       </div>
 
-      {!rec.supported && <div className="hint warn">Este navegador no permite grabar. Usa "Subir archivo" con una grabación de tu teléfono.</div>}
-      {rec.state === 'idle' && !blob && (
+      {idle && (
+        <div className="quick">
+          <button className="btn tile" onClick={() => fileRef.current?.click()}><UploadSimple size={22} /> Importar audio</button>
+          <input ref={fileRef} type="file" accept="audio/*,video/mp4,video/webm,.m4a,.mp3,.wav,.ogg,.webm,.aac" hidden onChange={handleFile} />
+        </div>
+      )}
+
+      {!rec.supported && <div className="hint warn">Este navegador no permite grabar. Usa "Importar audio" con una grabación de tu teléfono.</div>}
+      {idle && (
         <p className="hint">
-          Avisa a los participantes que se graba. Coloca el dispositivo al centro de la mesa.
-          {isIOS && ' En iPhone la grabación se detiene si bloqueas la pantalla o cambias de app: mantén la pantalla encendida, o graba con Notas de Voz y súbela aquí.'}
+          Avisa a los participantes que se graba y pon el dispositivo al centro de la mesa.
+          {isIOS && ' En iPhone la grabación se detiene si bloqueas la pantalla o cambias de app: mantén la pantalla encendida, o graba con Notas de Voz e impórtala aquí.'}
         </p>
       )}
-      {rec.state === 'recording' && <p className="hint">Grabando en mono. Cada 5 s se guarda una copia local por si se cierra la pestaña.</p>}
+      {live && <p className="hint">Grabando en mono. Cada 5 s se guarda una copia local por si se cierra la pestaña.</p>}
     </div>
   );
 }

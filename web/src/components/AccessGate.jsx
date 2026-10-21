@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { checkAccess, setAccessCode, WORKER_URL } from '../lib/api.js';
+import { Mascot, Wordmark } from './Brand.jsx';
 
 export default function AccessGate({ onReady }) {
   const [code, setCode] = useState('');
@@ -23,18 +24,20 @@ export default function AccessGate({ onReady }) {
   };
 
   return (
-    <form className="gate" onSubmit={submit}>
-      <h1>Juntas</h1>
-      <p>Escribe el código de acceso de tu servidor. Se guarda solo en este navegador.</p>
-      {!WORKER_URL && <div className="notice error">Falta configurar <code>VITE_WORKER_URL</code> al compilar la app.</div>}
-      <div className="field">
-        <label htmlFor="code">Código de acceso</label>
-        <input id="code" className="input" type="password" autoComplete="current-password" value={code} onChange={(e) => setCode(e.target.value)} />
+    <div className="gate-wrap">
+      <div className="gate">
+        <Mascot size={150} />
+        <Wordmark />
+        <p>Escribe tu código de acceso. Se guarda solo en este navegador.</p>
+        {!WORKER_URL && <div className="notice error">Falta configurar <code>VITE_WORKER_URL</code> al compilar la app.</div>}
+        <form onSubmit={submit}>
+          <input className="input" type="password" autoComplete="current-password" placeholder="Código de acceso" aria-label="Código de acceso" value={code} onChange={(e) => setCode(e.target.value)} />
+          {error && <div className="notice error">{error}</div>}
+          <button className="btn pink" type="submit" disabled={busy || !WORKER_URL}>
+            {busy ? 'Verificando…' : 'Entrar'}
+          </button>
+        </form>
       </div>
-      {error && <div className="notice error">{error}</div>}
-      <button className="btn primary" type="submit" disabled={busy || !WORKER_URL}>
-        {busy ? 'Verificando…' : 'Entrar'}
-      </button>
-    </form>
+    </div>
   );
 }
