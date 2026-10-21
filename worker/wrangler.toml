@@ -1,0 +1,44 @@
+name = "juntas-api"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# ── Variables públicas (no secretas). Los secretos van con `wrangler secret put`.
+[vars]
+# Origen permitido para CORS. Cambia por tu URL de GitHub Pages (sin barra final).
+ALLOWED_ORIGIN = "https://TU-USUARIO.github.io"
+# Proveedor de transcripción: "assemblyai" | "deepgram"
+STT_PROVIDER = "assemblyai"
+# Modelos de AssemblyAI, en orden de preferencia (el segundo es fallback).
+AAI_SPEECH_MODELS = "universal-3-pro,universal-2"
+# Modelo del LLM Gateway de AssemblyAI para el resumen.
+LLM_MODEL = "claude-sonnet-4-6"
+# Tope diario de transcripciones (protege tu crédito). Requiere el KV BUDGET de abajo.
+MAX_TRANSCRIPTS_PER_DAY = "15"
+# Tamaño máximo de audio en MB (el plan gratis de Workers acepta hasta 100).
+MAX_UPLOAD_MB = "100"
+
+# ── Rate limiting por IP (incluido en el plan gratis).
+[[unsafe.bindings]]
+name = "RL_TRANSCRIBE"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 6, period = 60 }
+
+[[unsafe.bindings]]
+name = "RL_GENERAL"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }
+
+[[unsafe.bindings]]
+name = "RL_AUTH_FAIL"
+type = "ratelimit"
+namespace_id = "1003"
+simple = { limit = 5, period = 60 }
+
+# ── Contador diario (opcional pero recomendado). Créalo con:
+#    wrangler kv namespace create BUDGET
+#    y pega el id que te devuelva.
+# [[kv_namespaces]]
+# binding = "BUDGET"
+# id = "PEGA_AQUI_EL_ID"
