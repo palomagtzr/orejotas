@@ -3,7 +3,7 @@ import { Coins } from '@phosphor-icons/react';
 
 // Tarifa estimada de AssemblyAI (Universal-3 Pro + diarización), USD por hora de audio.
 // Si cambias de modelo o proveedor, ajusta aquí. Es una estimación: el saldo real está en
-// https://www.assemblyai.com/dashboard/account/billing
+// https://www.assemblyai.com/dashboard/
 const RATE_PER_HOUR = 0.23;
 const KEY = 'orejotas:credit-anchor';
 
@@ -47,7 +47,7 @@ export default function CreditNote({ meetings, compact = false }) {
       ) : (
         <p className="credit-hint">
           Estimado a ${RATE_PER_HOUR}/h.{' '}
-          <a href="https://www.assemblyai.com/dashboard/account/billing" target="_blank" rel="noreferrer">Ver saldo real</a>
+          <a href="https://www.assemblyai.com/dashboard/" target="_blank" rel="noreferrer">Ver saldo real</a>
           {' · '}
           <button className="linkish" onClick={() => setEditing(true)}>Sincronizar</button>
         </p>
