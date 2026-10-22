@@ -116,9 +116,13 @@ Para agregar otro proveedor de transcripción, crea `providers/<nombre>.js` con 
 | `ASSEMBLYAI_API_KEY` | secret | Key de AssemblyAI |
 | `ACCESS_CODE` | secret | Código que exige la app |
 | `DEEPGRAM_API_KEY` | secret | Solo si `STT_PROVIDER=deepgram` |
+| `GROQ_API_KEY` | secret | Resumen con Groq (`LLM_PROVIDER=groq`) |
+| `LLM_API_KEY` | secret | Solo si `LLM_PROVIDER=custom` |
+| `LLM_PROVIDER` | var | `groq` \| `assemblyai` \| `custom` |
+| `LLM_BASE_URL` | var | Endpoint OpenAI-compatible si `custom` |
 | `ALLOWED_ORIGIN` | var | Origen de la app (coma para varios) |
 | `STT_PROVIDER` | var | `assemblyai` \| `deepgram` |
 | `AAI_SPEECH_MODELS` | var | Modelos en orden, p. ej. `universal-3-pro,universal-2` |
-| `LLM_MODEL` | var | Modelo del LLM Gateway (`claude-sonnet-4-6`) |
+| `LLM_MODEL` | var | Modelos en orden, separados por coma |
 | `MAX_TRANSCRIPTS_PER_DAY` | var | Tope diario (requiere KV `BUDGET`) |
 | `MAX_UPLOAD_MB` | var | Tamaño máximo de audio |

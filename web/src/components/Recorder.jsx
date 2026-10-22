@@ -4,6 +4,7 @@ import { useRecorder } from '../lib/useRecorder.js';
 import { recoverChunks, getRecordingMeta, clearChunks, saveMeeting, saveAudio, newId } from '../lib/db.js';
 import { uploadAudio, waitForTranscript } from '../lib/api.js';
 import { fmtTime } from '../lib/exporters.js';
+import { audioDuration } from '../lib/audio.js';
 import { Mascot } from './Brand.jsx';
 
 export const LANGUAGES = [
@@ -44,7 +45,21 @@ export default function Recorder({ onDone }) {
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('');
   const [error, setError] = useState(null);
+  const [est, setEst] = useState({ pct: 0, audioSec: 0 });
   const fileRef = useRef(null);
+
+  // Progreso estimado de la transcripción: AssemblyAI no reporta avance, así que se
+  // calcula contra la duración del audio (suele tardar ~20-25% de ella) y se topa en 95%.
+  useEffect(() => {
+    if (phase !== 'processing' || !est.audioSec) return;
+    const startedAt = Date.now();
+    const expectedMs = Math.max(8000, est.audioSec * 0.25 * 1000);
+    const t = setInterval(() => {
+      const ratio = (Date.now() - startedAt) / expectedMs;
+      setEst((e) => ({ ...e, pct: Math.min(0.95, ratio) }));
+    }, 500);
+    return () => clearInterval(t);
+  }, [phase, est.audioSec]);
 
   useEffect(() => localStorage.setItem('juntas:lang', language), [language]);
 
@@ -102,7 +117,9 @@ export default function Recorder({ onDone }) {
     try {
       await saveAudio(id, blob);
       await saveMeeting(meeting);
+      const audioSec = (await audioDuration(blob)) || rec.elapsed || blob.size / 8000;
       const sub = await uploadAudio(blob, language, setProgress);
+      setEst({ pct: 0, audioSec });
       setPhase('processing');
       await clearChunks();
       const result = sub.result || (await waitForTranscript(sub.id, { onTick: (s) => setStage(STAGES[s] || 'Procesando…') }));
@@ -126,11 +143,17 @@ export default function Recorder({ onDone }) {
       <div className="card progress">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Mascot size={64} />
-          <strong>{phase === 'uploading' ? `Subiendo audio… ${Math.round(progress * 100)}%` : stage || 'Transcribiendo…'}</strong>
+          <strong>
+            {phase === 'uploading'
+              ? `Subiendo audio… ${Math.round(progress * 100)}%`
+              : `${stage || 'Transcribiendo…'} ~${Math.round(est.pct * 100)}%`}
+          </strong>
         </div>
-        <div className={`bar ${phase === 'processing' ? 'indeterminate' : ''}`}><i style={{ width: `${progress * 100}%` }} /></div>
+        <div className="bar"><i style={{ width: `${(phase === 'uploading' ? progress : est.pct) * 100}%` }} /></div>
         <p className="hint" style={{ textAlign: 'left' }}>
-          {phase === 'processing' ? 'Orejotas está escuchando. Suele tardar entre 15 y 30% de la duración del audio; puedes dejar la pestaña abierta.' : 'No cierres la pestaña mientras sube.'}
+          {phase === 'processing'
+            ? `Orejotas está escuchando ${fmtTime(est.audioSec)} de audio. El porcentaje es estimado; el resultado llega cuando AssemblyAI termina. Puedes dejar la pestaña abierta.`
+            : 'No cierres la pestaña mientras sube.'}
         </p>
       </div>
     );

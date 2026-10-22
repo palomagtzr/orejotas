@@ -11,6 +11,7 @@ function normalize(dg) {
     end: u.end,
     text: u.transcript,
     confidence: u.confidence,
+    words: (u.words || []).map((w) => ({ s: w.start, e: w.end, t: w.punctuated_word || w.word })),
   }));
   const ch = dg.results?.channels?.[0];
   return {

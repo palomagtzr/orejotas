@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { House, Folder, Microphone, SignOut, Users, Plus } from '@phosphor-icons/react';
+import { House, Microphone, SignOut, Users, Plus } from '@phosphor-icons/react';
 import AccessGate from './components/AccessGate.jsx';
 import Recorder from './components/Recorder.jsx';
 import MeetingView from './components/MeetingView.jsx';
@@ -44,9 +44,8 @@ export default function App() {
 
   const Nav = ({ bottom }) => (
     <>
-      <button className={view === 'home' ? 'active' : ''} onClick={home}><House size={bottom ? 22 : 20} weight={view === 'home' ? 'fill' : 'regular'} /> Inicio</button>
+      <button className={view === 'home' || view === 'meeting' ? 'active' : ''} onClick={home}><House size={bottom ? 22 : 20} weight={view === 'home' || view === 'meeting' ? 'fill' : 'regular'} /> Inicio</button>
       <button className={view === 'record' ? 'active' : ''} onClick={() => setView('record')}><Microphone size={bottom ? 22 : 20} weight={view === 'record' ? 'fill' : 'regular'} /> Nueva junta</button>
-      <button className={view === 'meeting' ? 'active' : ''} onClick={home}><Folder size={bottom ? 22 : 20} weight={view === 'meeting' ? 'fill' : 'regular'} /> Juntas</button>
     </>
   );
 

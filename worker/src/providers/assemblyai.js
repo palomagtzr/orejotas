@@ -63,6 +63,7 @@ async function status(id, env) {
     end: u.end / 1000,
     text: u.text,
     confidence: u.confidence,
+    words: (u.words || []).map((w) => ({ s: w.start / 1000, e: w.end / 1000, t: w.text })),
   }));
 
   return {

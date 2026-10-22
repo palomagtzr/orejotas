@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import fixWebmDuration from 'fix-webm-duration';
 import { appendChunk, clearChunks, setRecordingMeta } from './db.js';
 
 const CHUNK_MS = 5000;
@@ -165,8 +166,14 @@ export function useRecorder() {
     return new Promise((resolve) => {
       const rec = recRef.current;
       if (!rec) return resolve(null);
-      rec.onstop = () => {
-        const blob = new Blob(partsRef.current, { type: rec.mimeType });
+      rec.onstop = async () => {
+        let blob = new Blob(partsRef.current, { type: rec.mimeType });
+        // Chrome/Firefox graban webm sin duración en la cabecera: sin esto no se puede
+        // saltar a un punto del audio ni leer su duración.
+        if (rec.mimeType.includes('webm')) {
+          const ms = Date.now() - startedAtRef.current - pausedTotalRef.current;
+          try { blob = await fixWebmDuration(blob, ms, { logger: false }); } catch { /* se queda el original */ }
+        }
         streamRef.current?.getTracks().forEach((t) => t.stop());
         clearInterval(timerRef.current);
         stopMeter();

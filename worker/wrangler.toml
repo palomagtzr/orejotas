@@ -5,13 +5,15 @@ compatibility_date = "2026-09-01"
 # ── Variables públicas (no secretas). Los secretos van con `wrangler secret put`.
 [vars]
 # Origen permitido para CORS. Cambia por tu URL de GitHub Pages (sin barra final).
-ALLOWED_ORIGIN = "https://TU-USUARIO.github.io"
+ALLOWED_ORIGIN = "https://palomagtzr.github.io"
 # Proveedor de transcripción: "assemblyai" | "deepgram"
 STT_PROVIDER = "assemblyai"
 # Modelos de AssemblyAI, en orden de preferencia (el segundo es fallback).
 AAI_SPEECH_MODELS = "universal-3-pro,universal-2"
-# Modelo del LLM Gateway de AssemblyAI para el resumen.
-LLM_MODEL = "claude-sonnet-4-6"
+# Proveedor del resumen: "groq" (gratis, secret GROQ_API_KEY) | "assemblyai" | "custom" (LLM_BASE_URL + secret LLM_API_KEY).
+LLM_PROVIDER = "groq"
+# Modelos en orden de preferencia; si uno falla por acceso, se prueba el siguiente.
+LLM_MODEL = "openai/gpt-oss-120b,llama-3.3-70b-versatile"
 # Tope diario de transcripciones (protege tu crédito). Requiere el KV BUDGET de abajo.
 MAX_TRANSCRIPTS_PER_DAY = "15"
 # Tamaño máximo de audio en MB (el plan gratis de Workers acepta hasta 100).

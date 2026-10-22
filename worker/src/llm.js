@@ -2,7 +2,15 @@
 // Para cambiar de proveedor de LLM, solo se reemplaza callModel().
 import { HttpError } from './http.js';
 
-const GATEWAY = 'https://llm-gateway.assemblyai.com/v1/chat/completions';
+// Cualquier API compatible con OpenAI sirve. Se elige con LLM_PROVIDER:
+//   assemblyai → LLM Gateway (usa ASSEMBLYAI_API_KEY; en plan gratis solo qwen)
+//   groq       → api.groq.com (gratis, sin tarjeta; requiere secret GROQ_API_KEY)
+//   custom     → LLM_BASE_URL + secret LLM_API_KEY
+const PROVIDERS = {
+  assemblyai: { url: 'https://llm-gateway.assemblyai.com/v1/chat/completions', key: (env) => env.ASSEMBLYAI_API_KEY, auth: (k) => k },
+  groq: { url: 'https://api.groq.com/openai/v1/chat/completions', key: (env) => env.GROQ_API_KEY, auth: (k) => `Bearer ${k}` },
+  custom: { url: null, key: (env) => env.LLM_API_KEY, auth: (k) => `Bearer ${k}` },
+};
 
 const LANG_NAMES = {
   es: 'español', en: 'inglés', pt: 'portugués', fr: 'francés', de: 'alemán', it: 'italiano',
@@ -68,25 +76,33 @@ function coerce(obj) {
 }
 
 async function callModel(messages, env) {
-  if (!env.ASSEMBLYAI_API_KEY) throw new HttpError(500, 'ASSEMBLYAI_API_KEY no configurada');
-  const res = await fetch(GATEWAY, {
-    method: 'POST',
-    headers: { authorization: env.ASSEMBLYAI_API_KEY, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: env.LLM_MODEL || 'claude-sonnet-4-6',
-      messages,
-      max_tokens: 4000,
-      temperature: 0.2,
-    }),
-  });
-  if (!res.ok) {
+  const name = env.LLM_PROVIDER || 'assemblyai';
+  const p = PROVIDERS[name];
+  if (!p) throw new HttpError(500, `LLM_PROVIDER inválido: ${name}`);
+  const url = p.url || env.LLM_BASE_URL;
+  const key = p.key(env);
+  if (!url || !key) throw new HttpError(500, `Falta configuración para el proveedor de LLM "${name}"`);
+  // Lista de modelos en orden. Si la cuenta no tiene acceso a uno, se prueba el siguiente.
+  const models = (env.LLM_MODEL || '').split(',').map((m) => m.trim()).filter(Boolean);
+  let lastError = 'sin modelos configurados';
+  for (const model of models) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { authorization: p.auth(key), 'content-type': 'application/json' },
+      body: JSON.stringify({ model, messages, max_tokens: 4000, temperature: 0.2 }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (typeof content !== 'string') throw new HttpError(502, 'Respuesta vacía del modelo');
+      return content;
+    }
     const txt = await res.text().catch(() => '');
-    throw new HttpError(502, `LLM Gateway respondió ${res.status}: ${txt.slice(0, 200)}`);
+    lastError = `${model} → ${res.status}: ${txt.slice(0, 160)}`;
+    const noAccess = res.status === 400 || res.status === 403 || res.status === 404;
+    if (!noAccess) break; // errores de servidor o rate limit: no tiene caso seguir
   }
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (typeof content !== 'string') throw new HttpError(502, 'Respuesta vacía del modelo');
-  return content;
+  throw new HttpError(502, `LLM (${name}): ${lastError}`);
 }
 
 /**

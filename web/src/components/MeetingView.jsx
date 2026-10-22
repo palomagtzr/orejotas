@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { ArrowLeft, DownloadSimple, Trash, Sparkle, Copy, FileDoc, FileText, MusicNote, CalendarBlank, Clock, Users } from '@phosphor-icons/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, DownloadSimple, Trash, Sparkle, Copy, FileDoc, FileText, MusicNote, CalendarBlank, Clock, Users, Play, Pause } from '@phosphor-icons/react';
 import { saveMeeting, deleteMeeting, getAudio } from '../lib/db.js';
 import { summarize } from '../lib/api.js';
 import { SECTIONS, fmtTime, fmtDate, speakerName, summaryToMarkdown, fullMarkdown, transcriptToText, toDocx, download, slug } from '../lib/exporters.js';
@@ -16,10 +16,62 @@ export default function MeetingView({ meeting: initialMeeting, onBack, onDeleted
   const [copied, setCopied] = useState(false);
   const [sumLang, setSumLang] = useState(initialMeeting.language === 'auto' ? initialMeeting.detectedLanguage || 'es' : initialMeeting.language);
 
+  const persist = async (next) => { setMeeting(next); await saveMeeting(next); };
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [playing, setPlaying] = useState(false);
+  const [now, setNow] = useState(0);
+  const audioRef = useRef(null);
+
+  // Audio local → object URL para el reproductor (se libera al salir).
+  useEffect(() => {
+    let url;
+    getAudio(meeting.id).then((blob) => {
+      if (blob) { url = URL.createObjectURL(blob); setAudioUrl(url); }
+    });
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [meeting.id]);
+
+  // Posición actual con rAF para que el resaltado de palabra sea fluido.
+  useEffect(() => {
+    if (!playing) return;
+    let raf;
+    const tick = () => { if (audioRef.current) setNow(audioRef.current.currentTime); raf = requestAnimationFrame(tick); };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+
+  const seekTo = (sec) => {
+    const a = audioRef.current;
+    if (!a) return setError('El audio ya no está en este dispositivo');
+    try {
+      a.currentTime = Math.max(0, sec - 0.15);
+      a.play().catch(() => {});
+    } catch {
+      setError('Este archivo no permite saltar a un punto. Los .webm importados a veces no lo soportan.');
+    }
+  };
+  const togglePlay = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) a.play().catch(() => {}); else a.pause();
+  };
+
+  const reassign = (index, label) => {
+    const utterances = meeting.utterances.map((u, i) => (i === index ? { ...u, speaker: label } : u));
+    const speakers = { ...meeting.speakers };
+    if (!(label in speakers)) speakers[label] = '';
+    persist({ ...meeting, utterances, speakers });
+  };
+  const addSpeakerTo = (index) => {
+    const labels = Object.keys(meeting.speakers || {});
+    let code = 65;
+    while (labels.includes(String.fromCharCode(code))) code++;
+    reassign(index, String.fromCharCode(code));
+  };
+
   const speakerLabels = useMemo(() => Object.keys(meeting.speakers || {}), [meeting.speakers]);
   const colorIndex = useMemo(() => Object.fromEntries(speakerLabels.map((s, i) => [s, i % 6])), [speakerLabels]);
 
-  const persist = async (next) => { setMeeting(next); await saveMeeting(next); };
   const renameSpeaker = (label, name) => persist({ ...meeting, speakers: { ...meeting.speakers, [label]: name } });
   const renameTitle = (title) => persist({ ...meeting, title });
 
@@ -70,6 +122,23 @@ export default function MeetingView({ meeting: initialMeeting, onBack, onDeleted
           <span><Clock /> {fmtTime(meeting.durationSec)}</span>
           <span><Users /> {speakerLabels.length} hablantes</span>
         </div>
+        {audioUrl && (
+          <div className="player">
+            <button className="round pink sm" onClick={togglePlay} aria-label={playing ? 'Pausar' : 'Reproducir'}>
+              {playing ? <Pause size={20} weight="fill" /> : <Play size={20} weight="fill" />}
+            </button>
+            <audio
+              ref={audioRef}
+              src={audioUrl}
+              preload="metadata"
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+              onEnded={() => setPlaying(false)}
+              onTimeUpdate={(e) => { if (!playing) setNow(e.currentTarget.currentTime); }}
+              controls
+            />
+          </div>
+        )}
         <div className="toolbar">
           <button className="btn small" onClick={exportDocx}><FileDoc /> Word</button>
           <button className="btn small" onClick={exportMd}><FileText /> Markdown</button>
@@ -97,16 +166,46 @@ export default function MeetingView({ meeting: initialMeeting, onBack, onDeleted
 
       {tab === 'transcript' && (
         <div>
-          {meeting.utterances.map((u, i) => (
-            <div className="utterance" key={i}>
-              <time>{fmtTime(u.start)}</time>
-              <span className={`avatar c${colorIndex[u.speaker] ?? 0}`}>{initial(speakerName(meeting, u.speaker))}</span>
-              <div>
-                <div className="who">{speakerName(meeting, u.speaker)}</div>
-                <p>{u.text}</p>
+          <p className="hint" style={{ textAlign: 'left', marginBottom: 8 }}>Haz click en una palabra para escucharla. Si un fragmento tiene el hablante equivocado, cámbialo en su etiqueta.</p>
+          {meeting.utterances.map((u, i) => {
+            const active = now >= u.start && now < u.end;
+            return (
+              <div className={`utterance ${active ? 'active' : ''}`} key={i}>
+                <button className="time" onClick={() => seekTo(u.start)} title="Reproducir desde aquí">{fmtTime(u.start)}</button>
+                <span className={`avatar c${colorIndex[u.speaker] ?? 0}`}>{initial(speakerName(meeting, u.speaker))}</span>
+                <div>
+                  <div className="who">
+                    <select
+                      className="who-select"
+                      value={u.speaker}
+                      onChange={(e) => (e.target.value === '__new' ? addSpeakerTo(i) : reassign(i, e.target.value))}
+                      aria-label="Hablante de este fragmento"
+                    >
+                      {speakerLabels.map((l) => <option key={l} value={l}>{speakerName(meeting, l)}</option>)}
+                      <option value="__new">+ Nuevo hablante</option>
+                    </select>
+                  </div>
+                  <p>
+                    {u.words && u.words.length ? (
+                      u.words.map((w, j) => (
+                        <span
+                          key={j}
+                          className={`w ${now >= w.s && now < w.e ? 'on' : ''}`}
+                          onClick={() => seekTo(w.s)}
+                          role="button"
+                          tabIndex={-1}
+                        >
+                          {w.t}{' '}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="w" onClick={() => seekTo(u.start)} role="button" tabIndex={-1}>{u.text}</span>
+                    )}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
