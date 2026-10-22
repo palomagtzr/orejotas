@@ -4,6 +4,7 @@ import AccessGate from './components/AccessGate.jsx';
 import Recorder from './components/Recorder.jsx';
 import MeetingView from './components/MeetingView.jsx';
 import { Mascot, Wordmark } from './components/Brand.jsx';
+import CreditNote from './components/CreditNote.jsx';
 import { getAccessCode, clearAccessCode } from './lib/api.js';
 import { listMeetings } from './lib/db.js';
 import { fmtDate, fmtTime } from './lib/exporters.js';
@@ -55,6 +56,7 @@ export default function App() {
         <Wordmark />
         <nav className="nav"><Nav /></nav>
         <button className="btn ghost small" style={{ justifyContent: 'flex-start' }} onClick={logout}><SignOut /> Salir</button>
+        <CreditNote meetings={meetings} />
         <Mascot size={210} className="mascot-peek" />
       </aside>
 
@@ -122,6 +124,7 @@ export default function App() {
                   </div>
                 ))
               )}
+              <div className="only-mobile"><CreditNote meetings={meetings} compact /></div>
             </>
           )}
         </main>
