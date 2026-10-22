@@ -2,9 +2,11 @@
 // que se manda a transcribir y el texto que se manda a resumir.
 import { createStore, get, set, del, keys, getMany, clear } from 'idb-keyval';
 
-const meetings = createStore('juntas-db', 'meetings');
-const chunks = createStore('juntas-db', 'rec-chunks');
-const audio = createStore('juntas-db', 'audio');
+// Una base de datos por store: idb-keyval solo crea el store al abrir la BD por
+// primera vez, así que tres stores en una misma BD fallan con "object store not found".
+const meetings = createStore('orejotas-meetings', 'kv');
+const chunks = createStore('orejotas-chunks', 'kv');
+const audio = createStore('orejotas-audio', 'kv');
 
 // ── Juntas ───────────────────────────────────────────────────────────────────
 export async function listMeetings() {
