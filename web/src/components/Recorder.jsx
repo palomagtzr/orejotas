@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Microphone, Pause, Play, Stop, UploadSimple, ArrowCounterClockwise, Trash, Sparkle } from '@phosphor-icons/react';
+import { Microphone, Pause, Play, Stop, UploadSimple, ArrowCounterClockwise, Trash, Sparkle, MonitorPlay } from '@phosphor-icons/react';
 import { useRecorder } from '../lib/useRecorder.js';
 import { recoverChunks, getRecordingMeta, clearChunks, saveMeeting, saveAudio, newId } from '../lib/db.js';
 import { uploadAudio, waitForTranscript } from '../lib/api.js';
@@ -187,7 +187,7 @@ export default function Recorder({ onDone }) {
         <div className="ring-wrap">
           <span className="ring" /><span className="ring r2" /><span className="ring r3" />
           {idle ? (
-            <button className="big-btn" onClick={rec.start} disabled={!rec.supported} aria-label="Grabar">
+            <button className="big-btn" onClick={() => rec.start('mic')} disabled={!rec.supported} aria-label="Grabar">
               <Microphone size={44} weight="fill" />
               <span className="lbl">Tap para grabar</span>
             </button>
@@ -227,6 +227,9 @@ export default function Recorder({ onDone }) {
 
       {idle && (
         <div className="quick">
+          {rec.tabSupported && (
+            <button className="btn tile" onClick={() => rec.start('tab')} title="Graba el audio de una pestaña (Meet, Zoom web, Teams) más tu micrófono"><MonitorPlay size={22} /> Reunión en línea</button>
+          )}
           <button className="btn tile" onClick={() => fileRef.current?.click()}><UploadSimple size={22} /> Importar audio</button>
           <input ref={fileRef} type="file" accept="audio/*,video/mp4,video/webm,.m4a,.mp3,.wav,.ogg,.webm,.aac" hidden onChange={handleFile} />
         </div>
@@ -236,6 +239,7 @@ export default function Recorder({ onDone }) {
       {idle && (
         <p className="hint">
           Avisa a los participantes que se graba y pon el dispositivo al centro de la mesa.
+          {rec.tabSupported && ' Para una reunión en línea, usa "Reunión en línea": elige la pestaña de la videollamada y marca "Compartir audio de la pestaña".'}
           {isIOS && ' En iPhone la grabación se detiene si bloqueas la pantalla o cambias de app: mantén la pantalla encendida, o graba con Notas de Voz e impórtala aquí.'}
         </p>
       )}

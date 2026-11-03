@@ -52,6 +52,10 @@ export function useRecorder() {
   const rafRef = useRef(null);
 
   const supported = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined';
+  // Captura de audio de pestaña (reuniones en línea): solo Chrome/Edge de escritorio.
+  const tabSupported = supported && !!navigator.mediaDevices?.getDisplayMedia && !/iPhone|iPad|iPod|Android/.test(navigator.userAgent);
+  const mixCtxRef = useRef(null);
+  const extraStreamsRef = useRef([]);
 
   const requestWakeLock = useCallback(async () => {
     try {
@@ -109,10 +113,42 @@ export function useRecorder() {
     setLevel(0);
   };
 
-  const start = useCallback(async () => {
+  /**
+   * mode: 'mic' (presencial) | 'tab' (reunión en línea: audio de una pestaña + micrófono).
+   */
+  const start = useCallback(async (mode = 'mic') => {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(CONSTRAINTS);
+      let stream;
+      if (mode === 'tab') {
+        // Chrome exige pedir video para mostrar el selector; el video se descarta de inmediato.
+        const tab = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          selfBrowserSurface: 'exclude',
+          systemAudio: 'include',
+        });
+        tab.getVideoTracks().forEach((t) => t.stop());
+        if (tab.getAudioTracks().length === 0) {
+          tab.getTracks().forEach((t) => t.stop());
+          throw Object.assign(new Error('La pestaña se compartió sin audio. Vuelve a intentarlo y marca "Compartir audio de la pestaña".'), { name: 'NoTabAudio' });
+        }
+        const mic = await navigator.mediaDevices.getUserMedia(CONSTRAINTS);
+        // Mezcla pestaña + micrófono en una sola pista mono.
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const dest = ctx.createMediaStreamDestination();
+        dest.channelCount = 1;
+        dest.channelCountMode = 'explicit';
+        ctx.createMediaStreamSource(tab).connect(dest);
+        ctx.createMediaStreamSource(mic).connect(dest);
+        mixCtxRef.current = ctx;
+        extraStreamsRef.current = [tab, mic];
+        stream = dest.stream;
+        // Si el usuario detiene la compartición desde la barra de Chrome, terminamos la grabación.
+        tab.getAudioTracks()[0].addEventListener('ended', () => { if (recRef.current?.state !== 'inactive') recRef.current?.stop(); });
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia(CONSTRAINTS);
+      }
       const type = pickMimeType();
       const rec = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 64000 } : { audioBitsPerSecond: 64000 });
       partsRef.current = [];
@@ -142,7 +178,11 @@ export function useRecorder() {
       requestWakeLock();
       setState('recording');
     } catch (e) {
-      setError(e.name === 'NotAllowedError' ? 'Permiso de micrófono denegado' : `No se pudo iniciar: ${e.message}`);
+      extraStreamsRef.current.forEach((st) => st.getTracks().forEach((t) => t.stop()));
+      extraStreamsRef.current = [];
+      if (e.name === 'NotAllowedError') setError(mode === 'tab' ? 'Se canceló la selección de pestaña' : 'Permiso de micrófono denegado');
+      else if (e.name === 'NoTabAudio') setError(e.message);
+      else setError(`No se pudo iniciar: ${e.message}`);
     }
   }, [requestWakeLock]);
 
@@ -175,6 +215,10 @@ export function useRecorder() {
           try { blob = await fixWebmDuration(blob, ms, { logger: false }); } catch { /* se queda el original */ }
         }
         streamRef.current?.getTracks().forEach((t) => t.stop());
+        extraStreamsRef.current.forEach((st) => st.getTracks().forEach((t) => t.stop()));
+        extraStreamsRef.current = [];
+        mixCtxRef.current?.close().catch(() => {});
+        mixCtxRef.current = null;
         clearInterval(timerRef.current);
         stopMeter();
         wakeRef.current?.release().catch(() => {});
@@ -194,5 +238,5 @@ export function useRecorder() {
     setError(null);
   }, []);
 
-  return { supported, state, elapsed, level, error, mime, start, pause, resume, stop, reset };
+  return { supported, tabSupported, state, elapsed, level, error, mime, start, pause, resume, stop, reset };
 }
